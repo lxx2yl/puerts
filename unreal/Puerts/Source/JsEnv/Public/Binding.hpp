@@ -386,7 +386,7 @@ private:
 
         if (!self)
         {
-            ThrowException(GetContext(info), "access a null object");
+            ThrowException(info, "access a null object");
             return true;
         }
 
@@ -414,7 +414,7 @@ private:
 
         if (!self)
         {
-            ThrowException(GetContext(info), "access a null object");
+            ThrowException(info, "access a null object");
             return true;
         }
 
@@ -471,7 +471,7 @@ struct FuncCallWrapper<Ret (*)(Args...), func>
         using Helper = internal::FuncCallHelper<std::pair<Ret, std::tuple<Args...>>, true>;
         if (!Helper::call(func, info))
         {
-            ThrowException(GetContext(info), "invalid parameter!");
+            ThrowException(info, "invalid parameter!");
         }
     }
     static const CFunctionInfo* info()
@@ -499,7 +499,7 @@ struct FuncCallWrapper<Ret (Inc::*)(Args...), func>
         using Helper = internal::FuncCallHelper<std::pair<Ret, std::tuple<Args...>>, true>;
         if (!Helper::template callMethod<Inc, decltype(func)>(func, info))
         {
-            ThrowException(GetContext(info), "invalid parameter!");
+            ThrowException(info, "invalid parameter!");
         }
     }
     static const CFunctionInfo* info()
@@ -528,7 +528,7 @@ struct FuncCallWrapper<Ret (Inc::*)(Args...) const, func>
         using Helper = internal::FuncCallHelper<std::pair<Ret, std::tuple<Args...>>, true>;
         if (!Helper::template callMethod<Inc, decltype(func)>(func, info))
         {
-            ThrowException(GetContext(info), "invalid parameter!");
+            ThrowException(info, "invalid parameter!");
         }
     }
     static const CFunctionInfo* info()
@@ -585,7 +585,7 @@ struct OverloadsRecursion
     {
         if (!_call(info))
         {
-            ThrowException(GetContext(info), "invalid parameter!");
+            ThrowException(info, "invalid parameter!");
         }
     }
 };
@@ -633,7 +633,7 @@ struct ConstructorRecursion
         auto Ret = _call(info);
         if (!Ret)
         {
-            ThrowException(GetContext(info), "invalid parameter!");
+            ThrowException(info, "invalid parameter!");
         }
         return Ret;
     }
@@ -677,7 +677,7 @@ struct PropertyWrapper<Ret Ins::*, member, typename std::enable_if<!is_objecttyp
         auto self = internal::TypeConverter<Ins*>::toCpp(context, GetThis(info));
         if (!self)
         {
-            ThrowException(context, "access a null object");
+            ThrowException(info, "access a null object");
             return;
         }
         SetReturn(info, internal::TypeConverter<Ret>::toScript(context, self->*member));
@@ -689,7 +689,7 @@ struct PropertyWrapper<Ret Ins::*, member, typename std::enable_if<!is_objecttyp
         auto self = internal::TypeConverter<Ins*>::toCpp(context, GetThis(info));
         if (!self)
         {
-            ThrowException(context, "access a null object");
+            ThrowException(info, "access a null object");
             return;
         }
         self->*member = internal::TypeConverter<Ret>::toCpp(context, GetArg(info, 0));
@@ -710,10 +710,12 @@ struct PropertyWrapper<Ret Ins::*, member, typename std::enable_if<is_objecttype
         auto self = internal::TypeConverter<Ins*>::toCpp(context, GetThis(info));
         if (!self)
         {
-            ThrowException(context, "access a null object");
+            ThrowException(info, "access a null object");
             return;
         }
-        SetReturn(info, internal::TypeConverter<Ret*>::toScript(context, &(self->*member)));
+        auto ret = internal::TypeConverter<Ret*>::toScript(context, &(self->*member));
+        LinkOuter<Ins, Ret>(context, GetThis(info), ret);
+        SetReturn(info, ret);
     }
 
     static void setter(CallbackInfoType info)
@@ -722,7 +724,7 @@ struct PropertyWrapper<Ret Ins::*, member, typename std::enable_if<is_objecttype
         auto self = internal::TypeConverter<Ins*>::toCpp(context, GetThis(info));
         if (!self)
         {
-            ThrowException(context, "access a null object");
+            ThrowException(info, "access a null object");
             return;
         }
         self->*member = internal::TypeConverter<Ret>::toCpp(context, GetArg(info, 0));
@@ -742,7 +744,7 @@ class ClassDefineBuilder
 
     const char* className_ = nullptr;
 
-    const char* superClassName_ = nullptr;
+    const void* superTypeId_ = nullptr;
 
     std::vector<GeneralFunctionInfo> functions_{};
 
@@ -751,6 +753,9 @@ class ClassDefineBuilder
     std::vector<GeneralPropertyInfo> properties_{};
 
     InitializeFuncType constructor_{};
+
+    typedef void (*FinalizeFuncType)(void* Ptr);
+    FinalizeFuncType finalize_{};
 
     std::vector<GeneralFunctionReflectionInfo> constructorInfos_{};
     std::vector<GeneralFunctionReflectionInfo> methodInfos_{};
@@ -765,7 +770,7 @@ public:
     template <typename S>
     ClassDefineBuilder<T>& Extends()
     {
-        superClassName_ = ScriptTypeName<S>::value;
+        superTypeId_ = StaticTypeId<S>::get();
         return *this;
     }
 
@@ -775,6 +780,7 @@ public:
         InitializeFuncType constructor = ConstructorWrapper<T, Args...>::call;
         constructor_ = constructor;
         constructorInfos_.push_back(GeneralFunctionReflectionInfo{"constructor", ConstructorWrapper<T, Args...>::info()});
+        finalize_ = [](void* Ptr) { delete static_cast<T*>(Ptr); };
         return *this;
     }
 
@@ -785,6 +791,7 @@ public:
             constructorInfos_.push_back(GeneralFunctionReflectionInfo{"constructor", infos[i]});
         }
         constructor_ = constructor;
+        finalize_ = [](void* Ptr) { delete static_cast<T*>(Ptr); };
         return *this;
     }
 
@@ -860,14 +867,15 @@ public:
         }
         else
         {
-            ClassDef.CPPTypeName = className_;
-            ClassDef.CPPSuperTypeName = superClassName_;
+            ClassDef.ScriptName = className_;
+            ClassDef.TypeId = StaticTypeId<T>::get();
+            ClassDef.SuperTypeId = superTypeId_;
         }
 
         ClassDef.Initialize = constructor_;
         if (constructor_)
         {
-            ClassDef.Finalize = [](void* Ptr) { delete static_cast<T*>(Ptr); };
+            ClassDef.Finalize = finalize_;
         }
 
         s_functions_ = std::move(functions_);
@@ -903,27 +911,29 @@ public:
 #else
     void Register()
     {
-        std::vector<pesapi_property_descriptor> properties;
+        size_t properties_count = functions_.size() + methods_.size() + properties_.size();
+        auto properties = pesapi_alloc_property_descriptors(properties_count);
+        size_t pos = 0;
         for (const auto& func : functions_)
         {
-            properties.push_back({func.Name, true, func.Callback});
+            pesapi_set_method_info(properties, pos++, func.Name, true, func.Callback, nullptr, nullptr);
         }
 
         for (const auto& method : methods_)
         {
-            properties.push_back({method.Name, false, method.Callback});
+            pesapi_set_method_info(properties, pos++, method.Name, false, method.Callback, nullptr, nullptr);
         }
 
         for (const auto& prop : properties_)
         {
-            properties.push_back({prop.Name, false, nullptr, prop.Getter, prop.Setter});
+            pesapi_set_property_info(properties, pos++, prop.Name, false, prop.Getter, prop.Setter, nullptr, nullptr);
         }
         pesapi_finalize finalize = nullptr;
         if (constructor_)
         {
-            finalize = [](void* Ptr) { delete static_cast<T*>(Ptr); };
+            finalize = finalize_;
         }
-        pesapi_define_class(className_, superClassName_, constructor_, finalize, properties.size(), properties.data());
+        pesapi_define_class(StaticTypeId<T>::get(), superTypeId_, className_, constructor_, finalize, properties_count, properties);
     }
 #endif
 };

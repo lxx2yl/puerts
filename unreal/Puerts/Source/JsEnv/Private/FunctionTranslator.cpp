@@ -9,6 +9,7 @@
 #include "FunctionTranslator.h"
 #include "V8Utils.h"
 #include "Misc/DefaultValueHelper.h"
+#include <mutex>
 
 static TMap<FName, TMap<FName, TMap<FName, FString>>> ParamDefaultMetas;
 
@@ -16,7 +17,7 @@ static TMap<FName, TMap<FName, FString>>* PC = nullptr;
 static TMap<FName, FString>* PF = nullptr;
 
 PRAGMA_DISABLE_OPTIMIZATION
-static int ParamDefaultMetasInit()
+static void ParamDefaultMetasInit()
 {
     // PC = &ParamDefaultMetas.Add(TEXT("MainObject"));
     // PF = &PC->Add(TEXT("DefaultTest"));
@@ -24,14 +25,15 @@ static int ParamDefaultMetasInit()
     // PF->Add(TEXT("I"), TEXT("10"));
     // PF->Add(TEXT("Vec"), TEXT("1.100000,2.200000,3.300000"));
 #include "InitParamDefaultMetas.inl"
-    return 0;
+    return;
 }
 PRAGMA_ENABLE_OPTIMIZATION
 
-int gDummy_ParamDefaultMetasInit_Ret = ParamDefaultMetasInit();
+std::once_flag ParamDefaultMetasInitFlag;
 
 TMap<FName, FString>* GetParamDefaultMetaFor(UFunction* InFunction)
 {
+    std::call_once(ParamDefaultMetasInitFlag, ParamDefaultMetasInit);
     UClass* OuterClass = InFunction->GetOuterUClass();
     auto ClassParamDefaultMeta = ParamDefaultMetas.Find(OuterClass->GetFName());
     if (ClassParamDefaultMeta)
@@ -241,9 +243,19 @@ void FFunctionTranslator::Call(
     }
 #endif
     if (Params)
-        CallFunction->InitializeStruct(Params);
+    {
+        FMemory::Memzero(Params, ParamsBufferSize);
+        if (Return)
+        {
+            Return->Property->InitializeValue_InContainer(Params);
+        }
+    }
     for (int i = 0; i < Arguments.size(); ++i)
     {
+        if (Arguments[i]->ParamShallowCopySize == 0)
+        {
+            Arguments[i]->Property->InitializeValue_InContainer(Params);
+        }
         if (UNLIKELY(ArgumentDefaultValues && Info[i]->IsUndefined()))
         {
             Arguments[i]->Property->CopyCompleteValue_InContainer(Params, ArgumentDefaultValues);
@@ -265,16 +277,9 @@ void FFunctionTranslator::Call(
     for (int i = 0; i < Arguments.size(); ++i)
     {
         Arguments[i]->UEOutToJsInContainer(Isolate, Context, Info[i], Params, false);
-    }
-
-    if (Params)
-    {
-        for (int i = 0; i < Arguments.size(); ++i)
+        if (Arguments[i]->ParamShallowCopySize == 0)
         {
-            if (Arguments[i]->ParamShallowCopySize == 0)
-            {
-                Arguments[i]->Property->DestroyValue_InContainer(Params);
-            }
+            Arguments[i]->Property->DestroyValue_InContainer(Params);
         }
     }
 }
@@ -289,9 +294,15 @@ void FFunctionTranslator::Call(v8::Isolate* Isolate, v8::Local<v8::Context>& Con
 #endif
 
     if (Params)
-        Function->InitializeStruct(Params);
+    {
+        FMemory::Memzero(Params, ParamsBufferSize);
+    }
     for (int i = 0; i < Arguments.size(); ++i)
     {
+        if (Arguments[i]->ParamShallowCopySize == 0)
+        {
+            Arguments[i]->Property->InitializeValue_InContainer(Params);
+        }
         if (!Arguments[i]->JsToUEInContainer(Isolate, Context, Info[i], Params, false))
         {
             return;
@@ -309,16 +320,9 @@ void FFunctionTranslator::Call(v8::Isolate* Isolate, v8::Local<v8::Context>& Con
     for (int i = 0; i < Arguments.size(); ++i)
     {
         Arguments[i]->UEOutToJsInContainer(Isolate, Context, Info[i], Params, false);
-    }
-
-    if (Params)
-    {
-        for (int i = 0; i < Arguments.size(); ++i)
+        if (Arguments[i]->ParamShallowCopySize == 0)
         {
-            if (Arguments[i]->ParamShallowCopySize == 0)
-            {
-                Arguments[i]->Property->DestroyValue_InContainer(Params);
-            }
+            Arguments[i]->Property->DestroyValue_InContainer(Params);
         }
     }
 }

@@ -1,4 +1,4 @@
-![Logo](./pic/puerts_logo.png)
+![Logo](./doc/pic/puerts_logo.png)
 
 [![license](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Tencent/puerts/blob/master/LICENSE)
 [![release](https://img.shields.io/badge/release-v1.0.0-blue.svg)](https://github.com/Tencent/puerts/releases)
@@ -26,19 +26,8 @@ puerts是游戏引擎下的TypeScript编程解决方案
 
 ## 安装
 <!-- 方法1. 下载项目 -->
-* git clone https://github.com/Tencent/puerts.git
-
-* 拷贝插件到您项目
-
-    - unreal engine
-    
-        + 拷贝puerts/unreal下的Puerts目录到您项目的Plugins目录下，可以参考[unreal demo](https://github.com/chexiongsheng/puerts_unreal_demo)
-    
-    - unity
-    
-        + 拷贝puerts/unity/Assets下的所有内容到您项目的Assets目录下，可以参考[unity demo](https://github.com/chexiongsheng/puerts_unity_demo)
-        
-        + Plugins要单独下载[releases](https://github.com/Tencent/puerts/releases)，或者自行编译
+* [unreal](doc/unreal/install.md)
+* [unity](doc/unity/install.md)
 
 <!-- 方法2. 通过npm快速安装
 
@@ -53,6 +42,26 @@ npm i -g @puerts/cli
 ```
 puerts init
 ``` -->
+
+## 版本相关
+
+### 最新版本
+
+* [![unreal](https://img.shields.io/badge/unreal-v1.0.0-blue.svg)](https://github.com/Tencent/puerts/releases/tag/Unreal_v1.0.0)
+
+* [![unity](https://img.shields.io/badge/unity-v1.3.3-blue.svg)](https://github.com/Tencent/puerts/releases/tag/Unity_v1.3.3)
+
+### changelog
+
+* [unreal](doc/unreal/changelog.md)
+* [unity](doc/unity/changelog.md)
+
+### 已知问题
+
+各发布版本已知的，影响较大的bug及其修复办法
+
+* [unreal](doc/unreal/bugs.md)
+* [unity](doc/unity/bugs.md)
 
 ## 编程样例
 
@@ -94,8 +103,6 @@ console.log(actor.K2_GetActorLocation().ToString());
 
 * [unreal手册](doc/unreal/manual.md)
 * [unity手册](doc/unity/manual.md)
-* [unreal下脚本和引擎交互](doc/unreal/interact_with_uclass.md)
-* [纯c++api的支持](doc/unreal/template_binding.md)
 
 ## 支持的引擎，平台
 
@@ -118,11 +125,7 @@ console.log(actor.K2_GetActorLocation().ToString());
 
 ## 示例
 
-### Unreal继承引擎类模式
-
-* [FPS demo](https://github.com/chexiongsheng/puerts_fps_demo) ： 以一个FPS游戏例子演示如何使用Puerts的继承引擎类模式
-
-### Unreal自创建虚拟机模式
+### Unreal
 
 * [QuickStart.ts](https://github.com/chexiongsheng/puerts_unreal_demo/blob/master/TsProj/QuickStart.ts) ： 演示TypeScript和UE4引擎互相调用
 
@@ -131,6 +134,8 @@ console.log(actor.K2_GetActorLocation().ToString());
 * [AsyncTest.ts](https://github.com/chexiongsheng/puerts_unreal_demo/blob/master/TsProj/AsyncTest.ts) ： 将异步加载蓝图，Delay封装成async/await
 
 * [UsingWidget.ts](https://github.com/chexiongsheng/puerts_unreal_demo/blob/master/TsProj/UsingWidget.ts) ： UI加载，绑定事件，获取数据的演示
+
+* [FPS demo](https://github.com/chexiongsheng/puerts_fps_demo) ： 以一个FPS游戏例子演示如何使用Puerts的“继承引擎类功能”，该功能的介绍见[unreal手册](doc/unreal/manual.md)
 
 ### Unity
 
